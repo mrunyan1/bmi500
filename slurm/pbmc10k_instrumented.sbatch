@@ -3,7 +3,7 @@
 #SBATCH --partition=overflow
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --time=01:00:00
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/%x-%j.out
 
 set -e
