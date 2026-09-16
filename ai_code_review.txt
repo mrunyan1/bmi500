@@ -1,0 +1,234 @@
+AI CODE REVIEW
+BMI 500 Week 3
+Prepared for: Matthew Runyan
+Date: 16 September 2026
+
+REVIEWER AND TARGET
+
+Reviewer: OpenAI Codex
+Model: gpt-6-astra
+Reasoning setting: max
+Model identification source: the Codex session screenshot supplied by Matthew.
+Original generator: AI_code_gen.txt records Claude Code 2.1.271, Claude Opus 5,
+model id claude-opus-5.
+
+This is Codex's review of Matthew's Claude generated implementation and tests:
+  matvec_multiply.py
+  matvec_tests.py
+
+Matthew's manual partner review concerns Shashank Chauhan's emailed
+matvec_multiply.py and belongs in manual_code_review.txt.
+
+Files reviewed at local commit d4fd767ea77ece46e98a0bcdc944fbb28bf17753:
+  matvec_multiply.py SHA256:
+  44c116fa6ef25b4c21389ed01cadf1dcef9d1eef31e45f98b6e79ee9ca6fbd97
+  matvec_tests.py SHA256:
+  80d78bc59fb4f6b4d417215fa88bb5290e3885ace4ca444653d64b7b9d610d74
+
+USER PROMPTS
+
+Earlier request, which produced an explicitly AI generated draft about Shashank's
+code in partner_review/shashank/code_review_draft_v1.txt:
+"what do you think my code review should look like> make file and draft it there"
+
+Follow-up request for this separate Codex review, accompanying the screenshot:
+"we also need codex to have a review code file we submit since we used clasude code before, there should be differnce between the human my review and yours codex's"
+
+Codex interpreted the follow-up, together with slide 78, as requesting a separate
+AI review of the implementation generated earlier with Claude. The review below
+records Codex's findings and verification. It does not attribute them to Matthew.
+
+REVIEW OUTPUT
+
+Overall assessment
+
+The ordinary matrix and vector operations passed all 51 supplied unit tests and
+the supplied 1000x1000 demonstration under Python 3.14.4. The implementation
+satisfies the visible structural requirements: a loop for the dot product, reuse
+of that function for matrix rows, and a seeded random demonstration.
+
+The implementation has useful input checks, clear error messages for dimension
+mismatches, and compensated summation. The existing tests cover known answers,
+identity and zero matrices, algebraic properties, malformed values and shapes,
+input preservation, and cancellation. These are useful tests beyond checking that
+the demonstration runs.
+
+Three findings remain, ranked by their practical effect.
+
+1. Medium priority: dictionaries bypass the intended sequence validation.
+
+   Locations in matvec_multiply.py: lines 13 to 20, 74 to 88, and 94 to 95.
+
+   The comment says dictionaries cannot be indexed positionally, but checking for
+   __len__ and __getitem__ does not reject them. Dictionaries provide both.
+
+   Reproductions observed in this review:
+     dot_product({'a': 1}, [2])
+       Raised KeyError: 0.
+     dot_product({0: 1, 1: 2}, [3, 4])
+       Returned 11.0.
+     matvec_multiply({0: [1, 2], 1: [3, 4]}, [5, 6])
+       Raised TypeError: object of type 'int' has no len().
+
+   The last example passes validation using integer keys, then iterates over
+   those keys in the multiplication loop. This produces an internal error rather
+   than a clear rejection of an unsupported matrix type.
+
+   Recommendation: explicitly reject collections.abc.Mapping for the vector
+   arguments, matrix rows, and outer matrix. Add tests for both string keys and
+   integer keys. This is the first fix because the advertised validation is
+   inconsistent and malformed inputs can pass it.
+
+2. Medium priority: main() is not a reliable automated failure signal.
+
+   Locations in matvec_multiply.py: lines 118 to 133.
+
+   The maximum error loop uses "if error > max_error". If error is NaN, this
+   comparison is false, leaving max_error at its previous value. A NaN result can
+   therefore leave max_error at 0.0 and cause the demonstration to print PASS.
+
+   To check the verifier, Codex temporarily replaced matvec_multiply in memory:
+     A replacement returning zeros printed FAIL, but main() returned normally.
+     A replacement returning NaN values printed PASS with max_error 0.0.
+
+   These were injected faults used to assess the verifier. The unmodified
+   implementation passed its demonstration and rejects nonfinite input entries.
+
+   Recommendation: check result length and finiteness explicitly, compare every
+   element to its reference with the intended tolerance, and raise an assertion
+   or return a failing process status when verification fails. The unittest
+   suite already provides a dependable exit status for its own assertions;
+   main() should also expose failure to an automated runner.
+
+3. Lower priority: document the supported numeric range and extreme cases.
+
+   Locations in matvec_multiply.py: lines 21 to 26 and 45 to 62.
+
+   Compensated summation correctly preserved the small residual in:
+     dot_product([1e16, 1.0, -1e16], [1.0, 1.0, 1.0])
+       Returned 1.0.
+
+   It does not prevent all intermediate overflow:
+     dot_product([1e308, 1e308, -1e308], [1.0, 1.0, 1.0])
+       Raised OverflowError, although the exact sum rounds to the finite
+       floating point value 1e308.
+
+   Input validation also converts real values through math.isfinite:
+     dot_product([10**400], [0])
+       Raised OverflowError: int too large to convert to float.
+       The mathematical product is zero.
+
+   Recommendation: document that usable inputs are constrained by floating point
+   conversion and intermediate arithmetic. Give a clear range error when input
+   conversion overflows, and add cases for large magnitudes. Supporting wider
+   ranges would require additional numerical handling. Priority is lower because
+   these examples use extreme magnitudes and ordinary tested inputs passed.
+
+Scope and limitations
+
+This review covers the two files identified above and local checks under Python
+3.14.4. It does not claim exhaustive numerical validation or testing under every
+Python version. The source and existing tests were preserved unchanged.
+
+VERIFICATION TRANSCRIPT
+
+Command: python3 -B -m unittest -v matvec_tests
+Working directory: the bmi500 checkout containing this file
+Process exit code: 0
+
+test_commutative (matvec_tests.TestDotProduct.test_commutative) ... ok
+test_empty_vectors_give_zero (matvec_tests.TestDotProduct.test_empty_vectors_give_zero) ... ok
+test_input_is_not_modified (matvec_tests.TestDotProduct.test_input_is_not_modified) ... ok
+test_known_value (matvec_tests.TestDotProduct.test_known_value) ... ok
+test_length_mismatch_raises (matvec_tests.TestDotProduct.test_length_mismatch_raises) ... ok
+test_matches_independent_computation_on_random_data (matvec_tests.TestDotProduct.test_matches_independent_computation_on_random_data) ... ok
+test_orthogonal_vectors_give_zero (matvec_tests.TestDotProduct.test_orthogonal_vectors_give_zero) ... ok
+test_scaling_one_argument_scales_result (matvec_tests.TestDotProduct.test_scaling_one_argument_scales_result) ... ok
+test_self_dot_is_squared_norm (matvec_tests.TestDotProduct.test_self_dot_is_squared_norm) ... ok
+test_single_element_vectors (matvec_tests.TestDotProduct.test_single_element_vectors) ... ok
+test_with_negative_and_float_values (matvec_tests.TestDotProduct.test_with_negative_and_float_values) ... ok
+test_zero_vector_gives_zero (matvec_tests.TestDotProduct.test_zero_vector_gives_zero) ... ok
+test_compensated_summation_keeps_precision (matvec_tests.TestDotProductGuards.test_compensated_summation_keeps_precision) ... ok
+test_complex_element_raises_type_error (matvec_tests.TestDotProductGuards.test_complex_element_raises_type_error) ... ok
+test_error_message_names_the_offending_index (matvec_tests.TestDotProductGuards.test_error_message_names_the_offending_index) ... ok
+test_generator_argument_raises_type_error (matvec_tests.TestDotProductGuards.test_generator_argument_raises_type_error) ... ok
+test_infinite_element_raises_value_error (matvec_tests.TestDotProductGuards.test_infinite_element_raises_value_error) ... ok
+test_integers_and_booleans_are_accepted (matvec_tests.TestDotProductGuards.test_integers_and_booleans_are_accepted) ... ok
+test_length_mismatch_message_reports_lengths (matvec_tests.TestDotProductGuards.test_length_mismatch_message_reports_lengths) ... ok
+test_nan_element_raises_value_error (matvec_tests.TestDotProductGuards.test_nan_element_raises_value_error) ... ok
+test_non_numeric_element_raises_type_error (matvec_tests.TestDotProductGuards.test_non_numeric_element_raises_type_error) ... ok
+test_none_argument_raises_type_error (matvec_tests.TestDotProductGuards.test_none_argument_raises_type_error) ... ok
+test_overflow_raises_overflow_error (matvec_tests.TestDotProductGuards.test_overflow_raises_overflow_error) ... ok
+test_scalar_argument_raises_type_error (matvec_tests.TestDotProductGuards.test_scalar_argument_raises_type_error) ... ok
+test_set_argument_raises_type_error (matvec_tests.TestDotProductGuards.test_set_argument_raises_type_error) ... ok
+test_string_argument_raises_type_error (matvec_tests.TestDotProductGuards.test_string_argument_raises_type_error) ... ok
+test_tuples_are_accepted (matvec_tests.TestDotProductGuards.test_tuples_are_accepted) ... ok
+test_validate_false_skips_checks (matvec_tests.TestDotProductGuards.test_validate_false_skips_checks) ... ok
+test_empty_matrix_returns_empty_list (matvec_tests.TestMatVecMultiply.test_empty_matrix_returns_empty_list) ... ok
+test_identity_matrix_returns_input_vector (matvec_tests.TestMatVecMultiply.test_identity_matrix_returns_input_vector) ... ok
+test_input_is_not_modified (matvec_tests.TestMatVecMultiply.test_input_is_not_modified) ... ok
+test_linearity_in_the_vector (matvec_tests.TestMatVecMultiply.test_linearity_in_the_vector) ... ok
+test_matches_independent_computation_on_random_data (matvec_tests.TestMatVecMultiply.test_matches_independent_computation_on_random_data) ... ok
+test_non_square_matrix_result_length (matvec_tests.TestMatVecMultiply.test_non_square_matrix_result_length) ... ok
+test_row_length_mismatch_raises (matvec_tests.TestMatVecMultiply.test_row_length_mismatch_raises) ... ok
+test_single_row_matches_dot_product (matvec_tests.TestMatVecMultiply.test_single_row_matches_dot_product) ... ok
+test_small_known_product (matvec_tests.TestMatVecMultiply.test_small_known_product) ... ok
+test_vector_length_mismatch_raises (matvec_tests.TestMatVecMultiply.test_vector_length_mismatch_raises) ... ok
+test_zero_matrix_returns_zero_vector (matvec_tests.TestMatVecMultiply.test_zero_matrix_returns_zero_vector) ... ok
+test_zero_vector_returns_zero_vector (matvec_tests.TestMatVecMultiply.test_zero_vector_returns_zero_vector) ... ok
+test_empty_matrix_still_validates_the_vector (matvec_tests.TestMatVecMultiplyGuards.test_empty_matrix_still_validates_the_vector) ... ok
+test_empty_matrix_with_valid_vector_still_returns_empty (matvec_tests.TestMatVecMultiplyGuards.test_empty_matrix_with_valid_vector_still_returns_empty) ... ok
+test_flat_vector_as_matrix_raises_type_error (matvec_tests.TestMatVecMultiplyGuards.test_flat_vector_as_matrix_raises_type_error) ... ok
+test_non_finite_entry_raises_value_error (matvec_tests.TestMatVecMultiplyGuards.test_non_finite_entry_raises_value_error) ... ok
+test_non_numeric_entry_reports_row_and_column (matvec_tests.TestMatVecMultiplyGuards.test_non_numeric_entry_reports_row_and_column) ... ok
+test_non_sequence_matrix_raises_type_error (matvec_tests.TestMatVecMultiplyGuards.test_non_sequence_matrix_raises_type_error) ... ok
+test_overflow_in_a_row_raises_overflow_error (matvec_tests.TestMatVecMultiplyGuards.test_overflow_in_a_row_raises_overflow_error) ... ok
+test_ragged_row_message_reports_index_and_lengths (matvec_tests.TestMatVecMultiplyGuards.test_ragged_row_message_reports_index_and_lengths) ... ok
+test_string_matrix_raises_type_error (matvec_tests.TestMatVecMultiplyGuards.test_string_matrix_raises_type_error) ... ok
+test_tuple_of_tuples_is_accepted (matvec_tests.TestMatVecMultiplyGuards.test_tuple_of_tuples_is_accepted) ... ok
+test_vector_is_validated_once_not_once_per_row (matvec_tests.TestMatVecMultiplyGuards.test_vector_is_validated_once_not_once_per_row) ... ok
+
+----------------------------------------------------------------------
+Ran 51 tests in 0.003s
+
+OK
+
+Command: python3 -B matvec_multiply.py
+Process exit code: 0
+
+matrix size: 1000 x 1000
+vector size: 1000
+result size: 1000
+first 5 computed : [10.652757, -5.098311, 2.616589, 18.813096, -18.425902]
+first 5 expected : [10.652757, -5.098311, 2.616589, 18.813096, -18.425902]
+max absolute error: 0.000e+00
+PASS
+
+Focused checks
+
+Codex imported matvec_multiply and called the exact expressions shown in the
+findings, plus matvec_multiply([[], []], []). Each exception was caught and
+reported explicitly. For the intermediate overflow reference, Fraction.from_float
+was used to sum the input floats exactly before converting the result back to
+float. All multipliers in that example were 1.0.
+
+For each verifier check, matvec_multiply was replaced in memory with a function
+returning [0.0] * len(matrix) or [float('nan')] * len(matrix). Codex captured
+main()'s output, recorded whether it returned normally, and restored the original
+function in a finally block. No source file was edited.
+
+Python: 3.14.4
+string keyed dictionary vector: raised KeyError: 0
+integer keyed dictionary vector: returned 11.0
+dictionary matrix: raised TypeError: object of type 'int' has no len()
+compensated cancellation: returned 1.0
+intermediate overflow: raised OverflowError: dot product overflowed the range of a float
+large integer multiplied by zero: raised OverflowError: int too large to convert to float
+zero column matrix: returned [0.0, 0.0]
+intermediate overflow, exact rational reference rounded to float: 1e+308
+In-memory main() fault injection, deliberately wrong zero result: returned None, no exception
+  max absolute error: 3.720e+01
+  FAIL
+In-memory main() fault injection, deliberately wrong NaN result: returned None, no exception
+  max absolute error: 0.000e+00
+  PASS
