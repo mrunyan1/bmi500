@@ -32,12 +32,13 @@ It may be required to install g++ and cmake in order to install python louvain
 
 4. run scanpy_pbmc.py
 ```
-python scanpy_pbmc.py --data-dir {data_dir} --data-set {data_set} ---out-dir {output_dir} --num-threads {num_thread}
+python scanpy_pbmc.py --data-dir {data_dir} --data-set {data_set} --out-dir {output_dir} --num-threads {num_thread}
 ```
 
 `data_dir` is the top level directory in which the data_set subdirectories resides.  defaults to `data`
 
-`output_dir` is where the output file is placed. defaults to `data`
+`output_dir` is a new directory for this run. It must not already exist.
 
 `data_set` is one of 'pbmc3k', 'pbmc6k', and 'pbmc10k'.
 
+See [PROFILING.md](PROFILING.md) for the cluster setup and the nine batch scripts.
