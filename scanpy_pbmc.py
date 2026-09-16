@@ -47,8 +47,8 @@ nthreads = args.num_threads
 
 sc.settings.n_jobs = nthreads
 print(f"using {sc.settings.n_jobs} Scanpy jobs")
-os.makedirs(outdir)  # A new directory prevents overwriting an earlier run.
-sc.settings.cachedir = outdir + 'cache'  # Each run starts with an empty Scanpy cache.
+os.makedirs(outdir)  # keep earlier runs
+sc.settings.cachedir = outdir + 'cache'
 early_timings.append(('arguments_and_paths', time.time() - start))
 
 timing_file = outdir + 'section_times.csv'
@@ -61,9 +61,8 @@ if args.profile_mode == 'instrumented':
             print(f'{section}: {seconds:.6f} seconds', flush=True)
 
 
-def record_time(section, section_start):
-    """Print and save one section's elapsed time, then start the next timer."""
-    seconds = time.time() - section_start
+def log_time(section, t0):
+    seconds = time.time() - t0
     if args.profile_mode == 'instrumented':
         print(f'{section}: {seconds:.6f} seconds', flush=True)
         with open(timing_file, 'a', newline='') as f:
@@ -75,8 +74,6 @@ with open(outdir + 'run_info.txt', 'w') as f:
     f.write(f'dataset: {dataset}\nmode: {args.profile_mode}\n')
     f.write(f'host: {socket.gethostname()}\npython: {sys.version}\n')
     f.write(f'Scanpy jobs: {nthreads}\n')
-    f.write('Cache: new Scanpy, Numba, and Matplotlib caches in the batch scripts.\n')
-    f.write('Operating system disk caches are not cleared.\n')
 
 start = time.time()
 
@@ -94,7 +91,7 @@ adata = sc.read_10x_mtx(
 adata.var_names_make_unique()  # this is unnecessary if using `var_names='gene_ids'` in `sc.read_10x_mtx`
 
 
-start = record_time('read_data', start)
+start = log_time('read_data', start)
 print(f'Input: {adata.n_obs} cells, {adata.n_vars} genes', flush=True)
 with open(outdir + 'run_info.txt', 'a') as f:
     f.write(f'input_cells: {adata.n_obs}\ninput_genes: {adata.n_vars}\n')
@@ -106,7 +103,7 @@ start = time.time()
 # basic filtering
 sc.pp.filter_cells(adata, min_genes=200)
 sc.pp.filter_genes(adata, min_cells=3)
-start = record_time('filter', start)
+start = log_time('filter', start)
 print(f'After filtering: {adata.n_obs} cells, {adata.n_vars} genes', flush=True)
 with open(outdir + 'run_info.txt', 'a') as f:
     f.write(f'filtered_cells: {adata.n_obs}\nfiltered_genes: {adata.n_vars}\n')
@@ -125,7 +122,7 @@ start = time.time()
 # and normalize to 10K reads per cell
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-start = record_time('normalize_and_log', start)
+start = log_time('normalize_and_log', start)
 
 
 # %%
@@ -139,25 +136,25 @@ adata.raw = adata
 
 # filtering by highly variable genes.
 adata = adata[:, adata.var.highly_variable]
-start = record_time('highly_variable_genes', start)
+start = log_time('highly_variable_genes', start)
 
 
 #%%
 # regres out effects of total counts per cell an d% mitochondrial genes
 #sc.pp.regress_out(adata, ['total_counts', 'pct_counts_mt'])
 sc.pp.scale(adata)
-start = record_time('scale', start)
+start = log_time('scale', start)
 
 # %%
 # report adata - so we can check ot see if we are comparable to Seurat
 # adata.write(results_file)
 # adata
-start = record_time('commented_report', start)
+start = log_time('commented_report', start)
 
 # %%
 # pca.  parallel via OMP_NUM_THREADS
 sc.tl.pca(adata, svd_solver='arpack', n_comps=30)
-start = record_time('pca', start)
+start = log_time('pca', start)
 
 # adata.write(results_file)
 # adata
@@ -165,7 +162,7 @@ start = record_time('pca', start)
 # %%
 # neighborhood graph
 sc.pp.neighbors(adata, n_pcs=30)
-start = record_time('neighbors', start)
+start = log_time('neighbors', start)
 
 # %% 
 # for fixing disconnected clusters or connectivity issues:
@@ -176,25 +173,25 @@ start = record_time('neighbors', start)
 
 # adata.write(results_file)
 # adata
-start = record_time('commented_paga', start)
+start = log_time('commented_paga', start)
 
 
 # %%
 # clustering  (currently uses leiden,  previously using louvain (like Seurat).)
 #sc.tl.leiden(adata)
 sc.tl.louvain(adata, resolution = 0.5)
-start = record_time('louvain', start)
+start = log_time('louvain', start)
 
 
 #%%
 # umap
 sc.tl.umap(adata, n_components=30)
-start = record_time('umap', start)
+start = log_time('umap', start)
 
 #%%
 adata.write(results_file)
 adata
-start = record_time('write_h5ad', start)
+start = log_time('write_h5ad', start)
 
 # %%
 # support t-test, wilcoxon, logistic regression
@@ -207,7 +204,7 @@ if args.profile_mode == 'fine':
     pstats.Stats(profile_file).strip_dirs().sort_stats('cumulative').print_stats(30)
 else:
     sc.tl.rank_genes_groups(adata, 'louvain', method='wilcoxon', use_raw=True)
-start = record_time('rank_genes_groups', start)
+start = log_time('rank_genes_groups', start)
 
 with open(outdir + 'completed.txt', 'w') as f:
     f.write(f'{dataset} {args.profile_mode}: completed\n')
